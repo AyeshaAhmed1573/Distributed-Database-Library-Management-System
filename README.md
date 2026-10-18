@@ -90,7 +90,7 @@ Open http://localhost:5173. `frontend/.env` holds `VITE_API_URL` (default `http:
 | GET | `/auth/branches` | none | List branches |
 | GET | `/books/search?q=&sort=&limit=` | none | Search all 3 branch replicas in parallel, merge duplicates, sort (`relevance`, `rating`, `year`). Reports any branch that failed. |
 | GET | `/books/:isbn/similar?branchId=` | none | Similar books (same category or author) |
-| POST | `/reservations` | JWT | Reserve a copy: `{ isbn, branchId }` |
+| GET | `/branches/nearby?lat=&lng=&isbn=&limit=` | none | Find nearest branches by coordinates (Haversine distance). Optional `isbn` filters by availability. Returns branches sorted by distance with `nearest_with_copy` highlighted. |
 | GET | `/reservations/mine` | JWT | My active holds |
 | DELETE | `/reservations/:branchId/:holdId` | JWT | Cancel a hold |
 | GET | `/books/:isbn/reviews` | optional | Reviews and average for a book. Each review has `mine: true` when it is yours. |
@@ -109,7 +109,7 @@ Protected routes need the header `Authorization: Bearer <token>`.
 |---|---|---|
 | Login / Register | `/login`, `/register` | coordinator Postgres via the API |
 | Dashboard (search, categories, sort, cluster health) | `/` | API search, health, holds |
-| Book detail (branch availability, reserve, similar, reviews) | modal | API |
+| Book detail (branch availability, reserve, similar, reviews, nearest branch) | modal | API (uses browser geolocation for nearest branch) |
 | My Library | `/my-library` | holds + favorites |
 | My Holds | `/my-holds` | API |
 | My Reviews | `/my-reviews` | MongoDB via the API |
@@ -117,6 +117,21 @@ Protected routes need the header `Authorization: Bearer <token>`.
 | Settings (dark/light theme) | `/settings` | browser only |
 
 Only the theme preference is stored in the browser. The login token is also kept in the browser (localStorage) so a refresh does not log you out; the account itself is in Postgres.
+
+## Nearest Branch Feature
+
+The book detail page includes a "Find nearest branch" feature that:
+
+1. **Uses browser geolocation** to get the user's current coordinates (latitude/longitude)
+2. **Calls the `/branches/nearby` API** with coordinates and the book's ISBN
+3. **Calculates distance** using the Haversine formula to find the closest branches
+4. **Shows availability** for each nearby branch (copies available / total copies)
+5. **Highlights the nearest branch** that has the book in stock
+6. **Allows reservation** directly from the nearest branch results
+
+**Fallback:** If the user denies location permission, a "Use Karachi city centre" button is available to search from the city's center coordinates (24.8607, 67.0011) for demo purposes.
+
+**Note:** Geolocation requires HTTPS in production environments. It works on localhost for development.
 
 ## Check that data is really stored
 

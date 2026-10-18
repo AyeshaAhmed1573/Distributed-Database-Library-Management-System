@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Star, MessageSquare, Trash2 } from "lucide-react";
+import { X, Star, MessageSquare, Trash2, MapPin } from "lucide-react";
 import {
   getSimilarBooks,
   reserveBook,
@@ -7,6 +7,7 @@ import {
   getReviews,
   submitReview,
   deleteReview,
+  getNearbyBranches,
 } from "../api";
 
 export default function BookDetail({ book: initialBook, onClose }) {
@@ -26,6 +27,12 @@ export default function BookDetail({ book: initialBook, onClose }) {
   const [myComment, setMyComment] = useState("");
   const [reviewError, setReviewError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const [nearbyBranches, setNearbyBranches] = useState(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState(null);
+  const [locationDenied, setLocationDenied] = useState(false);
+  const [hasAttempted, setHasAttempted] = useState(false);
 
   const iReviewed = reviews.some((r) => r.mine);
 
@@ -151,6 +158,75 @@ export default function BookDetail({ book: initialBook, onClose }) {
     }
   }
 
+  async function handleFindNearby() {
+    setNearbyLoading(true);
+    setNearbyError(null);
+    setLocationDenied(false);
+    setHasAttempted(true);
+
+    if (!navigator.geolocation) {
+      setNearbyError("Geolocation is not supported by your browser.");
+      setNearbyLoading(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const data = await getNearbyBranches(latitude, longitude, book.isbn, 3);
+          setNearbyBranches(data);
+          setNearbyError(null);
+        } catch (err) {
+          setNearbyError(err?.response?.data?.error || err?.message || "Could not fetch nearby branches.");
+        } finally {
+          setNearbyLoading(false);
+        }
+      },
+      (error) => {
+        setNearbyLoading(false);
+        if (error.code === error.PERMISSION_DENIED) {
+          setLocationDenied(true);
+          setNearbyError("Location permission denied. Use the fallback button to search from Karachi city centre.");
+        } else {
+          setNearbyError("Could not get your location. Use the fallback button to search from Karachi city centre.");
+        }
+      }
+    );
+  }
+
+  async function handleUseKarachiCentre() {
+    setNearbyLoading(true);
+    setNearbyError(null);
+    setHasAttempted(true);
+    try {
+      const KARACHI_LAT = 24.8607;
+      const KARACHI_LNG = 67.0011;
+      const data = await getNearbyBranches(KARACHI_LAT, KARACHI_LNG, book.isbn, 3);
+      setNearbyBranches(data);
+      setLocationDenied(false);
+      setNearbyError(null);
+    } catch (err) {
+      setNearbyError(err?.response?.data?.error || err?.message || "Could not fetch nearby branches.");
+    } finally {
+      setNearbyLoading(false);
+    }
+  }
+
+  async function handleReserveNearby(branchId) {
+    await handleReserve(branchId);
+    // Refresh nearby branches to show updated availability
+    if (nearbyBranches) {
+      const { lat, lng } = nearbyBranches.origin;
+      try {
+        const data = await getNearbyBranches(lat, lng, book.isbn, 3);
+        setNearbyBranches(data);
+      } catch {
+        // If refresh fails, keep showing current data
+      }
+    }
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -198,6 +274,68 @@ export default function BookDetail({ book: initialBook, onClose }) {
               <div className={status.type === "success" ? "status-ok" : "status-error"}>
                 {status.message}
               </div>
+            )}
+
+            <h4 className="modal-subheading">Nearest branch</h4>
+            {!nearbyBranches && !nearbyLoading && (
+              <button
+                className="branch-nearby-btn"
+                onClick={handleFindNearby}
+                disabled={nearbyLoading}
+              >
+                <MapPin size={16} />
+                Find nearest branch
+              </button>
+            )}
+            {locationDenied && (
+              <button
+                className="branch-nearby-btn"
+                onClick={handleUseKarachiCentre}
+                disabled={nearbyLoading}
+              >
+                <MapPin size={16} />
+                Use Karachi city centre
+              </button>
+            )}
+            {nearbyLoading && <p className="muted">Finding nearby branches...</p>}
+            {hasAttempted && nearbyError && <div className="status-error">{nearbyError}</div>}
+            {nearbyBranches && nearbyBranches.branches.length > 0 && (
+              <div className="branch-list">
+                {nearbyBranches.branches.map((b) => (
+                  <div
+                    className={`branch-row ${nearbyBranches.nearest_with_copy?.branch_id === b.branch_id ? "nearest-highlight" : ""}`}
+                    key={b.branch_id}
+                  >
+                    <div>
+                      <span className="branch-name">{b.name}</span>
+                      <span className="muted branch-location">
+                        {b.city} · {b.distance_km.toFixed(1)} km away
+                      </span>
+                    </div>
+                    <div className="branch-stock">
+                      <span className={b.available_copies > 0 ? "in" : "out"}>
+                        {b.available_copies > 0 ? `${b.available_copies} of ${b.total_copies} available` : "none available"}
+                      </span>
+                      {b.available_copies > 0 && (
+                        <button
+                          disabled={reserving}
+                          onClick={() => handleReserveNearby(b.branch_id)}
+                        >
+                          Reserve
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {nearbyBranches.nearest_with_copy && (
+                  <p className="muted">
+                    <MapPin size={12} /> Nearest with a copy available: {nearbyBranches.nearest_with_copy.name}
+                  </p>
+                )}
+              </div>
+            )}
+            {nearbyBranches && nearbyBranches.branches.length === 0 && (
+              <p className="muted">No branches found.</p>
             )}
           </>
         )}

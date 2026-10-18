@@ -32,6 +32,16 @@ export const registerUser = (data) => api.post("/auth/register", data).then((r) 
 export const loginUser = (data) => api.post("/auth/login", data).then((r) => r.data);
 export const getBranches = () => api.get("/auth/branches").then((r) => r.data);
 
+// ---- Branches ----
+export const getNearbyBranches = (lat, lng, isbn = null, limit = 3) => {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error("Latitude and longitude must be valid numbers");
+  }
+  const params = { lat, lng, limit };
+  if (isbn) params.isbn = isbn;
+  return api.get("/branches/nearby", { params }).then((r) => r.data);
+};
+
 // ---- Health ----
 export const getHealth = () => api.get("/health").then((r) => r.data);
 

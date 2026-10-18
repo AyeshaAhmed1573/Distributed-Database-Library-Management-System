@@ -777,6 +777,11 @@ button {
   font-size: 0.85rem;
 }
 
+.branch-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 .branch-row .in {
   color: #3fae55;
   font-weight: 600;
@@ -1028,4 +1033,65 @@ button {
 
 .review-delete-btn:hover {
   color: #d1495b;
+}
+
+/* ---------------- Nearest branch ---------------- */
+.branch-nearby-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1.5px solid #6c4ff0;
+  background: none;
+  color: #6c4ff0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.branch-nearby-btn:hover {
+  background: #6c4ff0;
+  color: white;
+}
+
+.branch-nearby-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.branch-name {
+  font-weight: 600;
+  display: block;
+}
+
+.branch-location {
+  font-size: 0.78rem;
+  display: block;
+}
+
+.branch-stock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.branch-stock button {
+  border: none;
+  background: #6c4ff0;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.branch-stock button:disabled {
+  background: #d0d0e0;
+  cursor: default;
+}
+
+.nearest-highlight {
+  background: linear-gradient(135deg, rgba(63, 174, 85, 0.15), rgba(63, 174, 85, 0.05));
+  border: 1.5px solid #3fae55;
 }
