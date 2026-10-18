@@ -1,0 +1,301 @@
+
+name: distributed-library
+
+# ---------------------------------------------------------------
+# Shared settings for the three branch PRIMARY databases
+# ---------------------------------------------------------------
+x-pg-primary: &pg-primary
+  image: postgres:16
+  restart: unless-stopped
+  command: >
+    postgres
+    -c wal_level=replica
+    -c max_wal_senders=10
+    -c max_replication_slots=10
+    -c hot_standby=on
+    -c max_connections=200
+  healthcheck:
+    test:
+      - CMD-SHELL
+      - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+    interval: 5s
+    timeout: 5s
+    retries: 15
+
+# ---------------------------------------------------------------
+# Shared backend API settings
+# ---------------------------------------------------------------
+x-api: &api
+  build: ./backend
+  restart: unless-stopped
+  environment:
+    IN_DOCKER: "1"
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    MONGO_USER: ${MONGO_USER:-admin}
+    MONGO_PASSWORD: ${MONGO_PASSWORD:-admin123}
+    JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+    CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+  depends_on:
+    coordinator-db:
+      condition: service_healthy
+    branch1-primary:
+      condition: service_healthy
+    branch2-primary:
+      condition: service_healthy
+    branch3-primary:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+
+  # =============================================================
+  # Backend API instances
+  # =============================================================
+  api1:
+    <<: *api
+    container_name: lib_api1
+
+  api2:
+    <<: *api
+    container_name: lib_api2
+
+  api3:
+    <<: *api
+    container_name: lib_api3
+
+  # =============================================================
+  # Nginx Load Balancer
+  # =============================================================
+  nginx:
+    image: nginx:alpine
+    container_name: lib_nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api1
+      - api2
+      - api3
+
+  # =============================================================
+  # Branch 1 - Central Library
+  # =============================================================
+  branch1-primary:
+    <<: *pg-primary
+    container_name: lib_branch1_primary
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: library
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      BRANCH_CODE: BR1
+      BRANCH_NAME: "Central Library"
+    ports:
+      - "5441:5432"
+    volumes:
+      - branch1_primary_data:/var/lib/postgresql/data
+      - ./infra/postgres/primary:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/branch_schema.sql:/schema/branch_schema.sql:ro
+
+  branch1-replica:
+    image: postgres:16
+    container_name: lib_branch1_replica
+    restart: unless-stopped
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
+    environment:
+      PRIMARY_HOST: branch1-primary
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    depends_on:
+      branch1-primary:
+        condition: service_healthy
+    ports:
+      - "5451:5432"
+    volumes:
+      - branch1_replica_data:/var/lib/postgresql/data
+      - ./infra/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+
+  # =============================================================
+  # Branch 2 - North Campus Library
+  # =============================================================
+  branch2-primary:
+    <<: *pg-primary
+    container_name: lib_branch2_primary
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: library
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      BRANCH_CODE: BR2
+      BRANCH_NAME: "North Campus Library"
+    ports:
+      - "5442:5432"
+    volumes:
+      - branch2_primary_data:/var/lib/postgresql/data
+      - ./infra/postgres/primary:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/branch_schema.sql:/schema/branch_schema.sql:ro
+
+  branch2-replica:
+    image: postgres:16
+    container_name: lib_branch2_replica
+    restart: unless-stopped
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
+    environment:
+      PRIMARY_HOST: branch2-primary
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    depends_on:
+      branch2-primary:
+        condition: service_healthy
+    ports:
+      - "5452:5432"
+    volumes:
+      - branch2_replica_data:/var/lib/postgresql/data
+      - ./infra/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+
+  # =============================================================
+  # Branch 3 - South Campus Library
+  # =============================================================
+  branch3-primary:
+    <<: *pg-primary
+    container_name: lib_branch3_primary
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: library
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+      BRANCH_CODE: BR3
+      BRANCH_NAME: "South Campus Library"
+    ports:
+      - "5443:5432"
+    volumes:
+      - branch3_primary_data:/var/lib/postgresql/data
+      - ./infra/postgres/primary:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/branch_schema.sql:/schema/branch_schema.sql:ro
+
+  branch3-replica:
+    image: postgres:16
+    container_name: lib_branch3_replica
+    restart: unless-stopped
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
+    environment:
+      PRIMARY_HOST: branch3-primary
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    depends_on:
+      branch3-primary:
+        condition: service_healthy
+    ports:
+      - "5453:5432"
+    volumes:
+      - branch3_replica_data:/var/lib/postgresql/data
+      - ./infra/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+
+  # =============================================================
+  # Central Coordinator Database
+  # =============================================================
+  coordinator-db:
+    image: postgres:16
+    container_name: lib_coordinator
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: coordinator
+    ports:
+      - "5440:5432"
+    volumes:
+      - coordinator_data:/var/lib/postgresql/data
+      - ./infra/postgres/coordinator:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # =============================================================
+  # Redis Cache
+  # =============================================================
+  redis:
+    image: redis:7
+    container_name: lib_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # =============================================================
+  # MongoDB - Reviews, Ratings and Activity Logs
+  # =============================================================
+  mongo:
+    image: mongo:7
+    container_name: lib_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin123}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - ./infra/mongo:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - db.adminCommand('ping').ok
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # =============================================================
+  # Optional Vector/Search Services
+  # Start with: docker compose --profile extras up -d
+  # =============================================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: lib_elasticsearch
+    profiles: ["extras"]
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lib_qdrant
+    profiles: ["extras"]
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+# ===============================================================
+# Persistent Volumes
+# ===============================================================
+volumes:
+  branch1_primary_data:
+  branch1_replica_data:
+  branch2_primary_data:
+  branch2_replica_data:
+  branch3_primary_data:
+  branch3_replica_data:
+  coordinator_data:
+  mongo_data:
+  qdrant_data:
+  elasticsearch_data:
