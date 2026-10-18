@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getMongoDb, closeMongo } from "../src/mongo.js";
 import { unit, stockedAt } from "./lib/stocking.js";
+import readline from "node:readline";
 
 const args = process.argv.slice(2);
 const N = Number(args.find((a) => !a.startsWith("--")) || 5_000_000);
@@ -19,13 +20,21 @@ const TZ_OFFSET_MS = 5 * 3600 * 1000; // Karachi, UTC+5
 const POP_EXPONENT = 0.75;            // dampens bestsellers so they don't take everything
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-function readJsonl(name) {
+async function readJsonl(name) {
   const file = path.resolve(here, "../data", name);
   if (!fs.existsSync(file)) { console.error(`missing ${file}`); process.exit(1); }
-  return fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const out = [];
+  const rl = readline.createInterface({
+    input: fs.createReadStream(file, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of rl) {
+    if (line) out.push(JSON.parse(line));
+  }
+  return out;
 }
-const books = readJsonl("books.jsonl");
-const users = readJsonl("users.jsonl").map((u) => ({
+const books = await readJsonl("books.jsonl");
+const users = (await readJsonl("users.jsonl")).map((u) => ({
   ...u, signup: new Date(u.created_at).getTime(), username: u.username || "",
 }));
 console.log(`${books.length} books, ${users.length} users, generating ${N} events`);

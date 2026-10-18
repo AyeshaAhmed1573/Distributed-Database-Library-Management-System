@@ -1,120 +1,143 @@
-// Creates a large population of synthetic users in the coordinator DB and
-// writes data/users.jsonl (with the real user_ids) for the activity generator.
-//   node scripts/generate-users.js 200000
-// Re-running with the same number is safe: existing usernames are skipped.
-import fs from "node:fs";
-import path from "node:path";
+// Generates users and streams them straight to disk in chunks, split across
+// several worker threads running in parallel - so memory use stays flat no
+// matter how many users you ask for, and the full CPU gets used.
+//
+//   node scripts/generate-users.js 5000000            (5M users, auto worker count)
+//   node scripts/generate-users.js 50000000 --workers 8
+//
+// Writes data/users.jsonl. Fields match what scripts/generate-activity.js
+// expects: user_id, username, created_at, home_branch_id, weight.
+import { Worker, isMainThread, workerData, parentPort } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
-import bcrypt from "bcryptjs";
-import { nodes, connectionString } from "../src/config.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
-const N = Number(process.argv[2] || 5000000);
-const BATCH = 5000;
-const PASSWORD = "Password123!"; // every generated user shares this, so you can log in as any of them
-const EMAIL_DOMAIN = "student.lib.test";
-const BRANCH_WEIGHTS = [0.45, 0.30, 0.25]; // Central is the busiest
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = path.resolve(HERE, "../data");
+const OUT_FILE = path.join(DATA_DIR, "users.jsonl");
 
-const FIRST = ["Ayesha", "Omar", "Sara", "Hassan", "Fatima", "Zainab", "Ali", "Bilal", "Hira",
-  "Usman", "Maryam", "Ahmed", "Noor", "Danish", "Iqra", "Talha", "Mehwish", "Saad", "Amna",
-  "Faisal", "Daniel", "Emma", "Liam", "Mei", "Carlos", "Elena", "John", "Sofia", "Arjun",
-  "Priya", "Yusuf", "Laila", "Kamran", "Rabia", "Imran", "Sana", "Hamza", "Nimra", "Zara", "Adeel"];
-const LAST = ["Khan", "Malik", "Raza", "Ahmed", "Farooq", "Noor", "Hussain", "Ali", "Siddiqui",
-  "Sheikh", "Qureshi", "Ansari", "Baig", "Chaudhry", "Mirza", "Iqbal", "Butt", "Rehman", "Javed",
-  "Shah", "Memon", "Zaidi", "Hashmi", "Lodhi", "Rizvi", "Carter", "Reyes", "Lin", "Petrova",
-  "Mendes", "Klein", "Patel", "Singh", "Kapoor", "Nasir", "Aslam", "Mahmood", "Bashir", "Tariq"];
+// ---------------------------------------------------------------
+// MAIN THREAD: parse args, spawn workers, each writing its own shard
+// file, then stream-concatenate the shards into one final file.
+// ---------------------------------------------------------------
+if (isMainThread) {
+  const args = process.argv.slice(2);
+  const N = Number(args.find((a) => !a.startsWith("--")) || 5_000_000);
+  const workersArgIdx = args.indexOf("--workers");
+  const WORKERS = Math.max(1, Number(workersArgIdx >= 0 ? args[workersArgIdx + 1] : os.cpus().length));
 
-function makeRng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const rng = makeRng(2026);
-const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  console.log(`generating ${N} users across ${WORKERS} worker thread(s)...`);
 
-function pickBranch() {
-  let r = rng();
-  for (let i = 0; i < BRANCH_WEIGHTS.length; i++) {
-    if ((r -= BRANCH_WEIGHTS[i]) < 0) return i + 1;
-  }
-  return BRANCH_WEIGHTS.length;
-}
+  const started = Date.now();
+  const perWorker = Math.ceil(N / WORKERS);
+  const shardPaths = [];
 
-// Lognormal: most users near 1, a few far above (heavy borrowers).
-function activityWeight() {
-  const z = Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * rng());
-  return Math.round(Math.exp(1.2 * z) * 1000) / 1000;
-}
+  await Promise.all(
+    Array.from({ length: WORKERS }, (_, i) => {
+      const start = i * perWorker;
+      const count = Math.min(perWorker, N - start);
+      if (count <= 0) return Promise.resolve(null);
+      const shardPath = path.join(DATA_DIR, `.tmp-users-shard-${i}.jsonl`);
+      shardPaths.push(shardPath);
+      return new Promise((resolve, reject) => {
+        const worker = new Worker(fileURLToPath(import.meta.url), {
+          workerData: { start, count, shardPath, seed: 1000 + i },
+        });
+        worker.on("message", (msg) => console.log(`  worker ${i}: ${msg.written} users written`));
+        worker.on("error", reject);
+        worker.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`worker ${i} exited ${code}`))));
+      });
+    })
+  );
 
-const NOW = Date.now();
-const SPAN_MS = 3 * 365 * 24 * 3600 * 1000;
-function signupDate() {
-  if (rng() < 0.4) { // 40% sign up in the first 3 weeks of a semester (Sep 1 / Feb 1)
-    const year = new Date(NOW).getUTCFullYear() - Math.floor(rng() * 4);
-    const month = rng() < 0.5 ? 8 : 1;
-    const d = Date.UTC(year, month, 1 + Math.floor(rng() * 21));
-    if (d < NOW && d > NOW - SPAN_MS) return new Date(d);
-  }
-  return new Date(NOW - rng() * SPAN_MS);
+  console.log("concatenating shards into data/users.jsonl ...");
+  await concatFiles(shardPaths.filter(Boolean), OUT_FILE);
+  for (const p of shardPaths) if (p && fs.existsSync(p)) fs.unlinkSync(p);
+
+  const sizeMb = (fs.statSync(OUT_FILE).size / 1024 / 1024).toFixed(1);
+  const seconds = ((Date.now() - started) / 1000).toFixed(1);
+  console.log(`\ndone: ${N} users, ${sizeMb} MB, ${seconds}s (${Math.round(N / (seconds || 1))} users/sec)`);
 }
 
-const users = [];
-for (let i = 0; i < N; i++) {
-  const first = pick(FIRST), last = pick(LAST);
-  const username = `${first}${last}${i}`.toLowerCase();
-  users.push({
-    username,
-    email: `${username}@${EMAIL_DOMAIN}`,
-    fullName: `${first} ${last}`,
-    branch: pickBranch(),
-    created: signupDate().toISOString(),
-    weight: activityWeight(),
+// Streams each shard file into the output in order, without ever loading a
+// whole shard into memory - this is what keeps a 10GB final file from
+// blowing up RAM during the merge step too.
+function concatFiles(inputs, outputPath) {
+  return new Promise((resolve, reject) => {
+    const out = fs.createWriteStream(outputPath);
+    function next(i) {
+      if (i >= inputs.length) return out.end(resolve);
+      const inStream = fs.createReadStream(inputs[i]);
+      inStream.pipe(out, { end: false });
+      inStream.on("end", () => next(i + 1));
+      inStream.on("error", reject);
+    }
+    next(0);
   });
 }
 
-const client = new pg.Client({ connectionString: connectionString(nodes.coordinator) });
-await client.connect();
-const hash = await bcrypt.hash(PASSWORD, 10); // hashed once, reused for every user
+// ---------------------------------------------------------------
+// WORKER THREAD: generates its slice of users and writes them one line
+// at a time, respecting backpressure, so this never buffers more than
+// a small amount of data in memory regardless of how many users it owns.
+// ---------------------------------------------------------------
+if (!isMainThread) {
+  const { start, count, shardPath, seed } = workerData;
 
-let inserted = 0;
-for (let start = 0; start < N; start += BATCH) {
-  const b = users.slice(start, start + BATCH);
-  const res = await client.query(
-    `INSERT INTO users (username, email, password_hash, full_name, home_branch_id, created_at)
-     SELECT u, e, $6::text, f, br, c
-     FROM unnest($1::text[], $2::text[], $3::text[], $4::int[], $5::timestamptz[]) AS t(u, e, f, br, c)
-     ON CONFLICT DO NOTHING`,
-    [b.map((x) => x.username), b.map((x) => x.email), b.map((x) => x.fullName),
-     b.map((x) => x.branch), b.map((x) => x.created), hash]
-  );
-  inserted += res.rowCount;
-  console.log(`${Math.min(start + BATCH, N)} / ${N} processed (${inserted} new)`);
+  function makeRng(s) {
+    let a = s >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rng = makeRng(seed);
+  const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+
+  const FIRST = ["ayesha", "omar", "sara", "daniel", "mei", "hassan", "elena", "john", "fatima",
+    "liam", "zainab", "carlos", "nadia", "robert", "hira", "ali", "sana", "bilal", "mariam", "usman"];
+  const LAST = ["khan", "farooq", "malik", "reyes", "lin", "raza", "petrova", "carter", "noor",
+    "obrien", "hussain", "mendes", "klein", "sheikh", "siddiqui", "ahmed", "iqbal", "baig"];
+
+  const FIVE_YEARS_MS = 5 * 365 * 86400000;
+  const NOW = Date.now();
+
+  const stream = fs.createWriteStream(shardPath);
+  let written = 0;
+
+  async function run() {
+    for (let k = 0; k < count; k++) {
+      const i = start + k;
+      const first = pick(FIRST);
+      const last = pick(LAST);
+
+      const user = {
+        user_id: randomUuidV4(rng),
+        username: `${first}_${last}${i}`,
+        created_at: new Date(NOW - rng() * FIVE_YEARS_MS).toISOString(),
+        home_branch_id: 1 + Math.floor(rng() * 3),
+        weight: Math.exp(rng() * 2 - 1),
+      };
+
+      const ok = stream.write(JSON.stringify(user) + "\n");
+      written++;
+      if (!ok) await new Promise((resolve) => stream.once("drain", resolve)); // respect backpressure
+
+      if (written % 500_000 === 0) parentPort.postMessage({ written });
+    }
+    await new Promise((resolve) => stream.end(resolve));
+    parentPort.postMessage({ written });
+  }
+
+  function randomUuidV4(rng) {
+    const hex = () => Math.floor(rng() * 16).toString(16);
+    const s = () => Array.from({ length: 4 }, hex).join("");
+    return `${s()}${s()}-${s()}-4${s().slice(1)}-${["8", "9", "a", "b"][Math.floor(rng() * 4)]}${s().slice(1)}-${s()}${s()}${s()}`;
+  }
+
+  await run();
 }
-
-// Read the real user_ids back and save them with each user's activity weight.
-const weightByEmail = new Map(users.map((u) => [u.email, u.weight]));
-const { rows } = await client.query(
-  "SELECT user_id, username, email, home_branch_id, created_at FROM users WHERE email LIKE $1 ORDER BY user_id",
-  [`%@${EMAIL_DOMAIN}`]
-);
-await client.end();
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const outFile = path.resolve(here, "../data/users.jsonl");
-fs.mkdirSync(path.dirname(outFile), { recursive: true });
-fs.writeFileSync(
-  outFile,
-  rows.map((r) => JSON.stringify({
-    user_id: String(r.user_id),
-    username: r.username,
-    home_branch_id: r.home_branch_id,
-    created_at: r.created_at,
-    weight: weightByEmail.get(r.email) ?? 1,
-  })).join("\n") + "\n"
-);
-console.log(`done: ${inserted} new users, ${rows.length} synthetic users total, saved to data/users.jsonl`);
-console.log(`every generated user logs in with password: ${PASSWORD}`);
