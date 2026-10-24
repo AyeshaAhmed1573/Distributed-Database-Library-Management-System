@@ -10,6 +10,8 @@ import Favorites from "./pages/Favorites";
 import MyLibrary from "./pages/MyLibrary";
 import Settings from "./pages/Settings";
 import MyReviews from "./pages/MyReviews";
+import AdminRoute from "./components/AdminRoute";
+import AdminDashboard from "./pages/AdminDashboard";
 
 export default function App() {
   return (
@@ -24,6 +26,7 @@ export default function App() {
           <Route path="/my-reviews" element={<ProtectedRoute><MyReviews /></ProtectedRoute>} />
           <Route path="/favorites" element={<ProtectedRoute><Favorites /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
         </Routes>
       </FavoritesProvider>
     </AuthProvider>

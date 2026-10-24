@@ -11,7 +11,7 @@ import { recommendationsRouter } from "./routes/recommendations.js";
 import { favoritesRouter } from "./routes/favorites.js";
 import { reviewsRouter } from "./routes/reviews.js";
 import { branchesRouter } from "./routes/branches.js";
-
+  import { adminRouter } from "./routes/admin.js";
 const app = express();
 app.use(cors({ origin: settings.corsOrigin }));
 app.use(express.json());
@@ -39,6 +39,8 @@ app.use("/reservations", reservationsRouter);
 app.use("/favorites", favoritesRouter);
 app.use("/branches", branchesRouter);
 app.use(reviewsRouter);
+
+app.use("/admin", adminRouter);
 
 // Fallback error handler - so a bug in a route returns JSON, not an HTML stack trace.
 app.use((err, req, res, next) => {

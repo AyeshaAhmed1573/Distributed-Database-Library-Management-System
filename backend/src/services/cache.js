@@ -1,7 +1,4 @@
-// Redis helpers: hot search results and live availability counts.
-// Every function fails soft - if Redis is down, callers just get a cache
-// miss (null) instead of an error, so the API still works without Redis.
-import { redis } from "../redis.js";
+ import { redis } from "../redis.js";
 
 const SEARCH_TTL_SECONDS = 30;      // hot searches: short-lived, high write rate
 const AVAILABILITY_TTL_SECONDS = 10; // availability changes often, so keep this short

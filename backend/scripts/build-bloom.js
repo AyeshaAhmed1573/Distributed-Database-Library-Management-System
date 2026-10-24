@@ -1,4 +1,3 @@
-// node scripts/build-bloom.js   (re-run after seeding or adding books)
 import pg from "pg";
 import { nodes, connectionString } from "../src/config.js";
 import { redis } from "../src/redis.js";
@@ -24,6 +23,7 @@ for (const i of [1, 2, 3]) {
     "SELECT title FROM books ORDER BY random() LIMIT 2000"
   );
   for (const { title } of sample) {
+        if (!/^[A-Za-z0-9\s]+$/.test(title)) continue; // same rule the search path uses
     const t = termsOf(title);
     if (!t.length) continue;
     checked++;

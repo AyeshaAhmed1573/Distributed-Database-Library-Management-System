@@ -1,6 +1,3 @@
-// Favorites live in MongoDB (library_docs.favorites): one small document per
-// user per book, with a snapshot of the book so the Favorites page can draw
-// cards without extra lookups.
 import { Router } from "express";
 import { getMongoDb } from "../mongo.js";
 import { requireAuth } from "../middleware/auth.js";

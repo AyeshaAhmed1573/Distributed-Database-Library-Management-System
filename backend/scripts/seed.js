@@ -1,9 +1,3 @@
-// Fill the branch databases and the coordinator's global index with sample data.
-//
-//   npm run seed                 -> 600 books, ~60% of them in each branch
-//   node scripts/seed.js 2000    -> 2000 books
-//
-// Re-running with the same number is safe: existing ISBNs / barcodes are skipped.
 import pg from "pg";
 import { nodes, connectionString } from "../src/config.js";
 import { getMongoDb, closeMongo } from "../src/mongo.js";

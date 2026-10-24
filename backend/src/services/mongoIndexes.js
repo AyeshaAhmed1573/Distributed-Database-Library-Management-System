@@ -1,6 +1,3 @@
-// Creates the indexes the review/favorite routes rely on. Safe to call on
-// every request: it only runs once, and never throws (if Mongo is down, the
-// route's own query fails with a 503 instead).
 import { getMongoDb } from "../mongo.js";
 
 let ready = null;

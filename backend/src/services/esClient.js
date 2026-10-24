@@ -1,8 +1,3 @@
-// Thin wrapper around Elasticsearch's REST API (plain fetch, no client
-// library - same pattern as services/vectorStore.js for Qdrant).
-//
-// Holds ONLY the book search index (title/author/ISBN/availability).
-// Reviews and activity logs stay in MongoDB - see services/mongoIndexes.js.
 import { settings } from "../config.js";
 
 const INDEX = "books";
@@ -12,7 +7,7 @@ async function es(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  if (!res.ok && res.status !== 404) {
+  if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`ES ${options.method || "GET"} ${path} -> ${res.status}: ${body}`);
   }
@@ -64,6 +59,17 @@ export async function bulkIndexBooks(docs) {
   if (result.errors) {
     const firstError = result.items.find((i) => i.index?.error)?.index?.error;
     throw new Error(`ES bulk index had errors: ${JSON.stringify(firstError)}`);
+  }
+}
+
+// Deleting a doc that doesn't exist in ES returns 404 - that's expected
+// (e.g. a book that was never indexed), not a real failure, so it's
+// swallowed here rather than left to the caller to special-case.
+export async function deleteBook(isbn) {
+  try {
+    await es(`/${INDEX}/_doc/${encodeURIComponent(isbn)}`, { method: "DELETE" });
+  } catch (err) {
+    if (!String(err.message).includes("-> 404")) throw err;
   }
 }
 

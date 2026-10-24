@@ -1,12 +1,3 @@
-// Turns book text into a fixed-length numeric vector for the vector DB.
-//
-// This uses FEATURE HASHING (the same family of technique as scikit-learn's
-// HashingVectorizer): each word gets hashed straight to a position in the
-// vector, so there's no model to download and no internet needed - it runs
-// instantly, anywhere. A full transformer model (e.g. sentence-transformers)
-// would give richer embeddings, but needs a ~90MB download on first run and
-// an internet connection every time the container rebuilds - too fragile
-// for a live demo. This is the pragmatic trade-off for a course project.
 import crypto from "node:crypto";
 
 export const EMBEDDING_DIM = 128;

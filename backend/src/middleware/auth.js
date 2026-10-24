@@ -1,5 +1,3 @@
-// Reads "Authorization: Bearer <token>", verifies it, and attaches req.user.
-// Use requireAuth on any route that needs a logged-in user.
 import { verifyToken } from "../services/auth.js";
 
 export function requireAuth(req, res, next) {

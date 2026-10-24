@@ -82,6 +82,9 @@ Open http://localhost:5173. `frontend/.env` holds `VITE_API_URL` (default `http:
 
 ## API routes
 
+For the full backend API reference, request examples, load testing, and branch
+failure commands, see [backend/API-README.md](./backend/API-README.md).
+
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
 | GET | `/health` | none | Status of every database node, Redis and MongoDB |
@@ -100,6 +103,10 @@ Open http://localhost:5173. `frontend/.env` holds `VITE_API_URL` (default `http:
 | GET | `/favorites` | JWT | My favorite books, newest first |
 | POST | `/favorites` | JWT | Add a favorite: `{ book: { isbn, title, author, ... } }` |
 | DELETE | `/favorites/:isbn` | JWT | Remove a favorite |
+| GET | `/admin/catalog?q=&page=&limit=` | Staff | Search the book catalog and branch stock |
+| POST | `/admin/catalog` | Staff | Add a book and copies to a branch |
+| PUT | `/admin/catalog/:isbn` | Staff | Update book metadata across stocked branches |
+| DELETE | `/admin/catalog/:isbn` | Staff | Delete a book with no hold/loan history |
 
 Protected routes need the header `Authorization: Bearer <token>`.
 
@@ -139,6 +146,20 @@ Accounts (coordinator Postgres):
 
 ```powershell
 docker exec lib_coordinator psql -U admin -d coordinator -c "SELECT username, email, role FROM users;"
+```
+
+### Import generated synthetic users
+
+The user generator writes `backend/data/users.jsonl`; it does not load users into Postgres. To append that file's synthetic accounts to the existing coordinator users table, run from the `backend` directory:
+
+```powershell
+node scripts/import-users.js --confirm
+```
+
+This streams the file into the coordinator in committed batches. Existing username or email conflicts are skipped, so you can rerun it after an interruption. Generated accounts use `@generated.invalid` email addresses and an unshared random password, so they are not intended for login. The import may take a long time and requires substantial database disk space. After it finishes, check the exact count:
+
+```powershell
+docker exec lib_coordinator psql -U admin -d coordinator -c "SELECT count(*) FROM users;"
 ```
 
 Favorites and reviews (MongoDB):
@@ -183,4 +204,3 @@ Then start again from step 1 and re-run `npm run seed`.
 | `Cannot find package 'pg'` | Run `npm install` inside `backend/`. |
 | Everything logs you out | Your token expired or `JWT_SECRET` changed. Log in again. |
 | Port already in use | Stop the other program using it, or run `docker compose ps` to see if containers are already running. |
-

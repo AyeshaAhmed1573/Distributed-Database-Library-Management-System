@@ -1,9 +1,3 @@
-// Bloom filter over every word the search can match, stored as a Redis bitmap
-// so all API instances share it.
-//   "no"    = definitely no book has this word -> skip cache + all 3 branches
-//   "maybe" = continue through the normal search path
-// It fails open: if Redis is down or the filter was never built, every
-// query counts as "maybe", so search keeps working.
 import crypto from "node:crypto";
 import snowball from "snowball-stemmers";
 import { redis } from "../redis.js";
@@ -46,7 +40,9 @@ export async function resetFilter() {
 export async function addTerms(terms) {
   const pipe = redis.pipeline();
   for (const t of terms) for (const p of positions(t)) pipe.setbit(KEY, p, 1);
-  await pipe.exec();
+  const results = await pipe.exec();
+  const failure = results.find(([err]) => err);
+  if (failure) throw failure[0];
 }
 
 export const markReady = () => redis.set(READY_KEY, "1");
@@ -70,8 +66,7 @@ export async function checkTerms(terms, { requireReady = true } = {}) {
 
 export async function mightMatch(q) {
   try {
-    if (!/^[\p{L}\p{N}\s]+$/u.test(q)) return true; // quotes, "-word", punctuation: let the DB decide
-    if (/\bor\b/i.test(q)) return true;             // websearch "or" operator
+    if (!/^[A-Za-z0-9\s]+$/.test(q)) return true; // anything but plain English words: let the DB decide    if (/\bor\b/i.test(q)) return true;             // websearch "or" operator
     const terms = termsOf(q);
     if (terms.length === 0) return true;
     return (await checkTerms(terms)) !== false;

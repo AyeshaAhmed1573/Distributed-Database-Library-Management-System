@@ -1,5 +1,4 @@
-// Auth / username endpoints. Usernames and emails are globally unique
-// (enforced by the coordinator DB), even though branches are separate.
+
 import { Router } from "express";
 import {
   findUserByUsername,

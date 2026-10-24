@@ -1,4 +1,3 @@
-// Reviews live in MongoDB (library_docs.reviews), one document per review.
 import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getMongoDb } from "../mongo.js";

@@ -1095,3 +1095,38 @@ button {
   background: linear-gradient(135deg, rgba(63, 174, 85, 0.15), rgba(63, 174, 85, 0.05));
   border: 1.5px solid #3fae55;
 }
+
+.best-match-container {
+  display: grid;
+  grid-template-columns: minmax(0, 300px);
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.best-match-container .book-card {
+  width: 100%;
+}
+
+.section-heading {
+  margin: 24px 0 16px;
+}
+
+.section-heading h3 {
+  margin: 0;
+}
+
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+@media (max-width: 600px) {
+  .best-match-container {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .book-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}

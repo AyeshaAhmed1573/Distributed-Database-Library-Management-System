@@ -1,8 +1,4 @@
-// Generates years of realistic library activity and bulk-loads it into MongoDB.
-//   node scripts/generate-activity.js 5000000 --fresh
-// Needs data/books.jsonl (step 1) and data/users.jsonl (with usernames).
-// --fresh deletes the documents a previous run generated (marked generated:true)
-// before loading; without it, the new events are added on top.
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

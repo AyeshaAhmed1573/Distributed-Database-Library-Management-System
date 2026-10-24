@@ -1,5 +1,3 @@
-// Distance between the user and each branch (haversine = straight-line
-// distance over the earth's surface), then sort nearest first.
 import { listBranches, getAvailabilityByIsbn } from "./coordinator.js";
 
 const EARTH_RADIUS_KM = 6371;

@@ -1,9 +1,10 @@
 import { NavLink } from "react-router-dom";
-import { Home, BookMarked, Heart, LayoutGrid, MessageSquare, Settings, LogOut, Library } from "lucide-react";
+import { Home, BookMarked, Heart, LayoutGrid, MessageSquare, Settings, LogOut, Library, Activity } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function Sidebar() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const isStaff = ["admin", "librarian"].includes(user?.role);
 
   return (
     <aside className="sidebar">
@@ -33,6 +34,12 @@ export default function Sidebar() {
           <Heart size={18} />
           <span>Favorites</span>
         </NavLink>
+        {isStaff && (
+          <NavLink to="/admin" className={({ isActive }) => (isActive ? "active" : "")}>
+            <Activity size={18} />
+            <span>Admin</span>
+          </NavLink>
+        )}
         <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>
           <Settings size={18} />
           <span>Settings</span>

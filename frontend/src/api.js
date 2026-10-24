@@ -72,3 +72,20 @@ export const deleteReview = (id) => api.delete(`/reviews/${id}`).then((r) => r.d
 export const getFavoriteBooks = () => api.get("/favorites").then((r) => r.data.favorites);
 export const addFavoriteBook = (book) => api.post("/favorites", { book }).then((r) => r.data);
 export const removeFavoriteBook = (isbn) => api.delete(`/favorites/${isbn}`).then((r) => r.data);
+// ---- Admin dashboard (staff only) ----
+export const getAdminOverview = () => api.get("/admin/overview").then((r) => r.data);
+export const getAdminEventsPerDay = (days = 90) =>
+  api.get("/admin/events-per-day", { params: { days } }).then((r) => r.data);
+export const getAdminTopBooks = (limit = 10) =>
+  api.get("/admin/top-books", { params: { limit } }).then((r) => r.data);
+export const getAdminTopSearches = (limit = 10) =>
+  api.get("/admin/top-searches", { params: { limit } }).then((r) => r.data);
+export const getAdminBranches = () => api.get("/admin/branches").then((r) => r.data);
+export const getAdminCatalog = (params = {}) => api.get("/admin/catalog", { params }).then((r) => r.data);
+export const getAdminBook = (isbn) =>
+  api.get(`/admin/catalog/${encodeURIComponent(isbn)}`).then((r) => r.data.book);
+export const addAdminBook = (book) => api.post("/admin/catalog", book).then((r) => r.data);
+export const updateAdminBook = (isbn, book) =>
+  api.put(`/admin/catalog/${encodeURIComponent(isbn)}`, book).then((r) => r.data);
+export const deleteAdminBook = (isbn) =>
+  api.delete(`/admin/catalog/${encodeURIComponent(isbn)}`).then((r) => r.data);

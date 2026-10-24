@@ -1,8 +1,4 @@
-// One-off (re-runnable) script: pulls every book from all 3 branches,
-// merges duplicate ISBNs, and bulk-indexes them into Elasticsearch.
-// Run this after seeding the branch databases, and again any time you re-seed.
-//
-//   node scripts/index-books.js
+
 import pg from "pg";
 import { nodes, connectionString } from "../src/config.js";
 import { ensureIndex, bulkIndexBooks } from "../src/services/esClient.js";

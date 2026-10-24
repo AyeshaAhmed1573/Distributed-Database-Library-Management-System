@@ -1,6 +1,3 @@
-// Reservation endpoints. This is the "last-copy race condition" demo:
-// two users can hit POST /reservations for the same book at the same
-// moment, and the database - not our JavaScript - decides who wins.
 import { Router } from "express";
 import { getPool } from "../db.js";
 import { settings, nodes } from "../config.js";

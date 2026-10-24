@@ -251,7 +251,7 @@ export default function BookDetail({ book: initialBook, onClose }) {
 
             <h4 className="modal-subheading">Availability by branch</h4>
             <div className="branch-list">
-              {(book.branches || []).map((b) => (
+              {(Array.isArray(book.branches) ? book.branches : []).map((b)=> (
                 <div className="branch-row" key={b.branch_id}>
                   <span>Branch {b.branch_id}</span>
                   <span className={b.available_copies > 0 ? "in" : "out"}>

@@ -1,6 +1,3 @@
-// Coordinator DB access: users, branches, global catalog, cross-branch holds.
-// This is the ONE place that talks to the coordinator database directly -
-// routes call these functions instead of writing SQL themselves.
 import { getPool } from "../db.js";
 
 const pool = () => getPool("coordinator");

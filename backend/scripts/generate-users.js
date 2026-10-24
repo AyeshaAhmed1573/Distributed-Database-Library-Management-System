@@ -1,12 +1,3 @@
-// Generates users and streams them straight to disk in chunks, split across
-// several worker threads running in parallel - so memory use stays flat no
-// matter how many users you ask for, and the full CPU gets used.
-//
-//   node scripts/generate-users.js 5000000            (5M users, auto worker count)
-//   node scripts/generate-users.js 50000000 --workers 8
-//
-// Writes data/users.jsonl. Fields match what scripts/generate-activity.js
-// expects: user_id, username, created_at, home_branch_id, weight.
 import { Worker, isMainThread, workerData, parentPort } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";

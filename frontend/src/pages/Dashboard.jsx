@@ -9,6 +9,7 @@ import BookDetail from "./BookDetail";
 import { searchBooks, getHealth, getMyHolds, getSimilarBooks } from "../api";
 import { CATEGORIES, AUTHORS } from "../data/catalogMeta";
   import { useFavorites } from "../context/FavoritesContext";
+  import { useRef } from "react";
 
 const SORTS = [
   { value: "relevance", label: "Relevance" },
@@ -36,6 +37,9 @@ async function fetchAcrossCategories(sort, limitEach = 4) {
 }
 
 export default function Dashboard() {
+  const searchTimer = useRef(null);
+  const [bestMatch, setBestMatch] = useState(null);
+const [similarBooks, setSimilarBooks] = useState([]);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("relevance");
   const [popularSort, setPopularSort] = useState("rating");
@@ -112,21 +116,37 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [favorites.length, holds.length, popular.length]);
 
-  async function runSearch(q = query, s = sort) {
-    if (!q.trim()) return;
-    setQuery(q);
-    setLoading(true);
-    setSearched(true);
-    try {
-      const data = await searchBooks(q, s);
-      setResults(data.results);
-      setFailedBranches(data.branches_failed || []);
-    } catch {
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
+  
+async function runSearch(q = query, s = sort) {
+  setLoading(true);
+  setSearched(true);
+
+  try {
+    const data = await searchBooks(q, s);
+
+    setResults(data.results || []);
+    setBestMatch(
+      data.bestMatch ??
+      (data.results && data.results.length ? data.results[0] : null)
+    );
+    setSimilarBooks(
+      data.similarBooks ??
+      (data.results || []).filter(
+        (book) => book.isbn !== data.results?.[0]?.isbn
+      )
+    );
+    setFailedBranches(data.failedBranches || data.branches_failed || []);
+  } catch (error) {
+    console.error("Search failed:", error);
+    setResults([]);
+    setBestMatch(null);
+    setSimilarBooks([]);
+    setFailedBranches([]);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   function handleSortClick(value) {
     setSort(value);
@@ -153,8 +173,21 @@ export default function Dashboard() {
     <div className="app-shell">
       <Sidebar />
       <div className="app-main">
-        <Navbar query={query} onQueryChange={setQuery} onSubmit={() => runSearch()} />
-
+<Navbar
+  query={query}
+  onQueryChange={(val) => {
+    setQuery(val);
+    clearTimeout(searchTimer.current);
+    if (val.trim().length >= 2) {
+      searchTimer.current = setTimeout(() => runSearch(val, sort), 300);
+    } else if (!val.trim()) {
+      setSearched(false);
+      setResults([]);
+      setForYou([]);
+    }
+  }}
+  onSubmit={() => runSearch()}
+/>
         <div className="dashboard-layout">
           <main className="dashboard">
             <section className="hero-banner">
@@ -178,18 +211,18 @@ export default function Dashboard() {
 
             <section className="stats-row">
               <StatCard icon={<BookOpen size={20} />} label="Results" value={results.length} tone="purple" />
-              <StatCard
+              {/* <StatCard
                 icon={<Building2 size={20} />}
                 label="Branches queried"
                 value={3 - failedBranches.length + "/3"}
                 tone="green"
-              />
-              <StatCard
+              /> */}
+              {/* <StatCard
                 icon={<ServerCog size={20} />}
                 label="Nodes up"
                 value={totalNodes ? `${upNodes}/${totalNodes}` : "..."}
                 tone="orange"
-              />
+              /> */}
               <StatCard icon={<Clock size={20} />} label="Active holds" value={holds.length} tone="purple" />
               <StatCard icon={<Heart size={20} />} label="Likes" value={favorites.length} tone="green" />
             </section>
@@ -219,21 +252,52 @@ export default function Dashboard() {
             </section>
 
             {searched ? (
-              <section>
-                <div className="section-heading">
-                  <h3>Results for "{query}"</h3>
-                </div>
-                {loading && <p className="muted">Searching...</p>}
-                {!loading && results.length === 0 && (
-                  <p className="muted">No books matched that search.</p>
-                )}
-                <div className="book-grid">
-                  {results.map((book) => (
-                    <BookCard key={book.isbn} book={book} onOpen={openBook} />
-                  ))}
-                </div>
-              </section>
-            ) : (
+  <section>
+    <div className="section-heading">
+      <h3>Search results for "{query}"</h3>
+    </div>
+
+    {loading && <p className="muted">Searching...</p>}
+
+    {!loading && !bestMatch && (
+      <p className="muted">No books matched that search.</p>
+    )}
+
+    {!loading && bestMatch && (
+      <>
+        <div className="section-heading">
+          <h3>Best Match</h3>
+        </div>
+
+        <div className="best-match-container">
+          <BookCard
+            key={bestMatch.isbn}
+            book={bestMatch}
+            onOpen={openBook}
+          />
+        </div>
+
+        {similarBooks.length > 0 && (
+          <>
+            <div className="section-heading">
+              <h3>Similar Books</h3>
+            </div>
+
+            <div className="book-grid">
+              {similarBooks.map((book) => (
+                <BookCard
+                  key={book.isbn}
+                  book={book}
+                  onOpen={openBook}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </>
+    )}
+  </section>
+) : (
               <>
                 {browseRows.map((row) => (
                   <section key={row.key}>

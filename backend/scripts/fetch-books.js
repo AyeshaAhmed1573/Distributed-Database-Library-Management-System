@@ -1,6 +1,4 @@
-// Pulls real books from Open Library into data/books.jsonl.
-// Run from the backend folder:  node scripts/fetch-books.js
-// Re-running is safe: ISBNs already saved are skipped.
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

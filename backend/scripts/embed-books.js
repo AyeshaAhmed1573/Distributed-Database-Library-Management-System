@@ -1,8 +1,4 @@
-// One-off (re-runnable) script: generates an embedding for every book in
-// every branch and loads them into Qdrant. Run this after seeding the
-// branch databases, and again any time you re-seed.
-//
-//   node scripts/embed-books.js
+
 import pg from "pg";
 import { nodes, connectionString } from "../src/config.js";
 import { embedText, bookEmbeddingText, EMBEDDING_DIM } from "../src/services/embeddings.js";
@@ -13,7 +9,7 @@ await ensureCollection(EMBEDDING_DIM);
 // Qdrant point ids must be integers, and the same ISBN can exist in several
 // branches as different points - combine branch + book_id into one integer.
 function pointId(branchId, bookId) {
-  return branchId * 10_000_000 + bookId;
+  return branchId * 10_000_000 + Number(bookId);
 }
 
 let total = 0;
